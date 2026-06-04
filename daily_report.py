@@ -13,16 +13,15 @@ import os
 import sys
 import argparse
 from datetime import datetime
-import anthropic
 import requests
 
 # ── env ──────────────────────────────────────────────────────────────────────
-ANTHROPIC_API_KEY = os.environ["ANTHROPIC_API_KEY"]
-TELEGRAM_TOKEN    = os.environ["TELEGRAM_TOKEN"]
-CHAT_ID           = os.environ["CHAT_ID"]          # default / owner chat
+OPENROUTER_API_KEY = os.environ["OPENROUTER_API_KEY"]
+TELEGRAM_TOKEN     = os.environ["TELEGRAM_TOKEN"]
+CHAT_ID            = os.environ["CHAT_ID"]          # default / owner chat
 
-MODEL       = "claude-opus-4-6"
-MAX_TOKENS  = 2000
+MODEL      = "anthropic/claude-haiku-4-5"   # cheap & fast; swap to anthropic/claude-opus-4 for best quality
+MAX_TOKENS = 2000
 
 # ── prompts ──────────────────────────────────────────────────────────────────
 SYSTEM_PROMPT = """You are an elite Indian equity analyst, thinking like a
@@ -151,8 +150,6 @@ def analyze(user_input: str | None = None) -> str:
     user_input=None → full scheduled report
     user_input=str  → command or free-text query
     """
-    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-
     if user_input is None or user_input.strip() == "":
         prompt = _full_report_prompt()
     else:
@@ -162,13 +159,24 @@ def analyze(user_input: str | None = None) -> str:
         else:
             prompt = _custom_prompt(user_input)
 
-    message = client.messages.create(
-        model=MODEL,
-        max_tokens=MAX_TOKENS,
-        system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": prompt}],
+    resp = requests.post(
+        "https://openrouter.ai/api/v1/chat/completions",
+        headers={
+            "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+            "Content-Type": "application/json",
+        },
+        json={
+            "model": MODEL,
+            "max_tokens": MAX_TOKENS,
+            "messages": [
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": prompt},
+            ],
+        },
+        timeout=60,
     )
-    return message.content[0].text
+    resp.raise_for_status()
+    return resp.json()["choices"][0]["message"]["content"]
 
 
 # ── telegram helpers ──────────────────────────────────────────────────────────

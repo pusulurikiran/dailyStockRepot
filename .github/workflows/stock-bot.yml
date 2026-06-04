@@ -1,0 +1,96 @@
+name: Indian Stock Market Bot
+
+on:
+  schedule:
+    # 03:00 UTC = 08:30 IST, Monday–Friday
+    - cron: "0 3 * * 1-5"
+
+  # Allow manual trigger for testing
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Run mode (scheduled | polling)"
+        required: false
+        default: "scheduled"
+
+jobs:
+  # ────────────────────────────────────────────────────────────────────────────
+  # JOB 1: Daily scheduled report
+  # Fires automatically Mon–Fri at 08:30 IST
+  # ────────────────────────────────────────────────────────────────────────────
+  scheduled-report:
+    name: Daily Report (08:30 IST)
+    runs-on: ubuntu-latest
+
+    # Skip this job when manually triggered with mode=polling
+    if: >
+      github.event_name == 'schedule' ||
+      (github.event_name == 'workflow_dispatch' &&
+       github.event.inputs.mode != 'polling')
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+          restore-keys: ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run daily report
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          CHAT_ID: ${{ secrets.CHAT_ID }}
+        run: python daily_report.py
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # JOB 2: Polling bot (commented out by default)
+  #
+  # GitHub Actions is NOT suitable for always-on polling — jobs time out
+  # after 6 hours and are billed by the minute.
+  #
+  # For production polling, deploy bot_polling.py to:
+  #   • Railway  → https://railway.app  (free tier available)
+  #   • Render   → https://render.com   (free tier available)
+  #   • Fly.io   → https://fly.io
+  #
+  # Uncomment below ONLY for short manual test runs via workflow_dispatch.
+  # ────────────────────────────────────────────────────────────────────────────
+
+  # polling-bot:
+  #   name: Polling Bot (manual only)
+  #   runs-on: ubuntu-latest
+  #   if: >
+  #     github.event_name == 'workflow_dispatch' &&
+  #     github.event.inputs.mode == 'polling'
+  #
+  #   steps:
+  #     - name: Checkout code
+  #       uses: actions/checkout@v4
+  #
+  #     - name: Set up Python
+  #       uses: actions/setup-python@v5
+  #       with:
+  #         python-version: "3.12"
+  #
+  #     - name: Install dependencies
+  #       run: pip install -r requirements.txt
+  #
+  #     - name: Start polling bot (runs for up to 5 hours)
+  #       timeout-minutes: 300
+  #       env:
+  #         ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+  #         TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+  #         CHAT_ID: ${{ secrets.CHAT_ID }}
+  #       run: python bot_polling.py
